@@ -6,6 +6,8 @@
 
   let
 
+    inherit (inputs.nixpkgs) lib;
+
     system = "x86_64-linux";
 
     pkgs = import inputs.nixpkgs { inherit system; };
@@ -17,7 +19,15 @@
   {
 
     devShells.${system}.default = dev-shell;
-    
+
+    nixosConfigurations.vm = lib.nixosSystem {
+      inherit system;
+      modules = [
+        ./port-forward.nix
+        ./static-web-server.nix
+      ];
+    };
+
   };
 
 }
