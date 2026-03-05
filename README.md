@@ -6,3 +6,4 @@ See subdirectory READMEs for details:
 
 - [`nixos.kr/`](nixos.kr/) — site content and build
 - [`nixos.kr/dns/`](nixos.kr/dns/) — DNS management
+- [`discord-bot/`](discord-bot/) — Discord archive bot
