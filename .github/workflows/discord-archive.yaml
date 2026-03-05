@@ -1,0 +1,83 @@
+name: Discord Archive
+
+on:
+  repository_dispatch:
+    types: [discord-archive]
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: nixbuild/nix-quick-install-action@v33
+
+      - name: Build discord-archive CLI
+        working-directory: discord-bot
+        run: nix build .#default --accept-flake-config -o result
+
+      - name: Run archive pipeline
+        id: archive
+        env:
+          CHANNEL_ID: ${{ github.event.client_payload.channel_id }}
+          MESSAGE_ID: ${{ github.event.client_payload.message_id }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          OUTPUT=$(discord-bot/result/bin/discord-archive \
+            --channel-id "$CHANNEL_ID" \
+            --message-id "$MESSAGE_ID" \
+            --discord-token "$DISCORD_BOT_TOKEN" \
+            --gemini-key "$GEMINI_API_KEY")
+
+          SLUG=$(echo "$OUTPUT" | jq -r '.slug')
+          CONTENT=$(echo "$OUTPUT" | jq -r '.content')
+
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+          mkdir -p nixos.kr/ko/faq
+          echo "$CONTENT" > "nixos.kr/ko/faq/${SLUG}.md"
+
+      - name: Create PR
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLUG: ${{ steps.archive.outputs.slug }}
+        run: |
+          BRANCH="archive/${SLUG}"
+          git checkout -b "$BRANCH"
+          git add "nixos.kr/ko/faq/${SLUG}.md"
+          git config user.name "nixoskr-bot"
+          git config user.email "bot@nixos.kr"
+          git commit -m "docs: add FAQ from Discord archive (${SLUG})"
+          git push origin "$BRANCH"
+
+          PR_URL=$(gh pr create \
+            --title "FAQ: ${SLUG}" \
+            --body "이 FAQ 항목은 Discord 대화에서 자동 생성되었습니다." \
+            --head "$BRANCH" \
+            --base master)
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Post result to Discord
+        env:
+          APPLICATION_ID: ${{ github.event.client_payload.application_id }}
+          INTERACTION_TOKEN: ${{ github.event.client_payload.interaction_token }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+        run: |
+          curl -s -X PATCH \
+            "https://discord.com/api/v10/webhooks/${APPLICATION_ID}/${INTERACTION_TOKEN}/messages/@original" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"✅ PR이 생성되었습니다: ${PR_URL}\"}"
+
+      - name: Post error to Discord on failure
+        if: failure()
+        env:
+          APPLICATION_ID: ${{ github.event.client_payload.application_id }}
+          INTERACTION_TOKEN: ${{ github.event.client_payload.interaction_token }}
+        run: |
+          curl -s -X PATCH \
+            "https://discord.com/api/v10/webhooks/${APPLICATION_ID}/${INTERACTION_TOKEN}/messages/@original" \
+            -H "Content-Type: application/json" \
+            -d '{"content": "❌ 아카이브 처리 중 오류가 발생했습니다."}'
