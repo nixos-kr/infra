@@ -16,6 +16,10 @@ data ClusterMessage = ClusterMessage
 maxGapSeconds :: NominalDiffTime
 maxGapSeconds = 300  -- 5 minutes
 
+-- | Extended gap for same-author continuity (15 minutes).
+sameAuthorMaxGap :: NominalDiffTime
+sameAuthorMaxGap = 900
+
 -- | Cluster messages by time proximity and participant continuity,
 -- then select the cluster containing the target message ID.
 clusterMessages :: Text -> [ClusterMessage] -> [ClusterMessage]
@@ -38,4 +42,4 @@ clusterMessages targetId msgs =
     isCloseEnough prev curr =
       let gap = abs (diffUTCTime (cmTimestamp curr) (cmTimestamp prev))
       in gap <= maxGapSeconds
-         || cmAuthorId curr == cmAuthorId prev
+         || (gap <= sameAuthorMaxGap && cmAuthorId curr == cmAuthorId prev)

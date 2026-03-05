@@ -39,11 +39,16 @@ extractText v = parseMaybe parseResponse v
     parseResponse = withObject "response" $ \top -> do
       candidates <- top .: "candidates"
       withArray "candidates" (\arr -> do
-        first <- withObject "candidate" (.: "content") (arr V.! 0)
-        parts <- withObject "content" (.: "parts") first
-        withArray "parts" (\parr ->
-          withObject "part" (.: "text") (parr V.! 0)
-          ) parts
+        case arr V.!? 0 of
+          Nothing -> fail "Empty candidates array"
+          Just cand -> do
+            first <- withObject "candidate" (.: "content") cand
+            parts <- withObject "content" (.: "parts") first
+            withArray "parts" (\parr ->
+              case parr V.!? 0 of
+                Nothing -> fail "Empty parts array"
+                Just p  -> withObject "part" (.: "text") p
+              ) parts
         ) candidates
 
 buildPrompt :: [ClusterMessage] -> Text

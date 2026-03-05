@@ -105,13 +105,23 @@ async fn handle_command(interaction: Interaction, ctx: &RouteContext<()>) -> Res
     let github_token = ctx.secret("GITHUB_TOKEN")?.to_string();
     let github_repo = ctx.var("GITHUB_REPO")?.to_string();
 
+    // Validate required fields
+    let token = interaction
+        .token
+        .as_deref()
+        .ok_or_else(|| Error::RustError("Missing interaction token".into()))?;
+    let app_id = interaction
+        .application_id
+        .as_deref()
+        .ok_or_else(|| Error::RustError("Missing application_id".into()))?;
+
     let dispatch_body = json!({
         "event_type": "discord-archive",
         "client_payload": {
             "channel_id": channel_id,
             "message_id": msg_id,
-            "interaction_token": interaction.token,
-            "application_id": interaction.application_id,
+            "interaction_token": token,
+            "application_id": app_id,
         }
     });
 

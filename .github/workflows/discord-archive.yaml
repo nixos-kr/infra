@@ -69,7 +69,7 @@ jobs:
           curl -s -X PATCH \
             "https://discord.com/api/v10/webhooks/${APPLICATION_ID}/${INTERACTION_TOKEN}/messages/@original" \
             -H "Content-Type: application/json" \
-            -d "{\"content\": \"✅ PR이 생성되었습니다: ${PR_URL}\"}"
+            -d "$(jq -n --arg url "$PR_URL" '{"content": "✅ PR이 생성되었습니다: \($url)"}')"
 
       - name: Post error to Discord on failure
         if: failure()
