@@ -1,0 +1,9 @@
+template:
+  theme: blue
+  sidebar:
+    enable: true
+    collapsed: false
+  urlStrategy: pretty
+page:
+  siteTitle: NixOS Korea
+  editBaseUrl: https://github.com/nixos-kr/infra/edit/master/nixos.kr/ko/
