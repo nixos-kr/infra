@@ -15,14 +15,22 @@
 ## 로컬 미리보기
 
 ```bash
+cd nixos.kr
 nix run .#default
 ```
 
 브라우저에서 표시되는 주소(기본: http://localhost:8080)를 열면 실시간 미리보기가 가능합니다. 파일을 수정하면 자동으로 반영됩니다.
 
+저장소 루트에서 실행할 경우:
+
+```bash
+nix run ./nixos.kr#default
+```
+
 ## 정적 사이트 빌드
 
 ```bash
+cd nixos.kr
 nix build .#default
 ls result/
 ```
@@ -31,7 +39,7 @@ ls result/
 
 1. 저장소를 fork합니다
 2. `ko/` 안의 Markdown 파일을 수정/추가합니다
-3. `nix run .#default`로 로컬에서 확인합니다
+3. `cd nixos.kr && nix run .#default`로 로컬에서 확인합니다
 4. PR을 제출합니다
 
 `master` 브랜치에 머지되면 자동으로 배포됩니다.
