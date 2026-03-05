@@ -1,0 +1,23 @@
+cabal-version:      3.0
+name:               discord-archive
+version:            0.1.0.0
+synopsis:           Discord conversation archiver for nixos.kr
+
+executable discord-archive
+  main-is:          Main.hs
+  hs-source-dirs:   src
+  default-language: Haskell2010
+  default-extensions:
+    OverloadedStrings
+    DeriveGeneric
+    RecordWildCards
+  ghc-options:      -Wall
+  build-depends:
+      base          >= 4.14 && < 5
+    , aeson         >= 2.0
+    , bytestring
+    , optparse-applicative >= 0.16
+    , req           >= 3.9
+    , text
+    , time
+    , vector
