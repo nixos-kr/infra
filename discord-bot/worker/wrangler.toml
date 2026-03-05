@@ -1,0 +1,17 @@
+name = "nixoskr-archive-bot"
+main = "build/worker/shim.mjs"
+compatibility_date = "2025-01-01"
+
+[build]
+command = "worker-build --release"
+
+[[rules]]
+globs = ["**/*.wasm"]
+type = "CompiledWasm"
+
+[vars]
+GITHUB_REPO = "nixos-kr/infra"
+
+# Secrets (set via `npx wrangler secret put <NAME>`):
+# DISCORD_PUBLIC_KEY
+# GITHUB_TOKEN
