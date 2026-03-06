@@ -24,6 +24,24 @@
             ];
           };
         };
+        apps.dns = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "dns" ''
+            set -euo pipefail
+            if [ -f dns/.env ]; then
+              set -a; source dns/.env; set +a
+            else
+              echo "dns/.env not found. Create from dns/.env.example"
+              exit 1
+            fi
+            ${pkgs.opentofu}/bin/tofu -chdir=dns init -upgrade -input=false > /dev/null 2>&1
+            if [ $# -eq 0 ]; then
+              ${pkgs.opentofu}/bin/tofu -chdir=dns apply
+            else
+              ${pkgs.opentofu}/bin/tofu -chdir=dns "$@"
+            fi
+          '');
+        };
         devShells.default = pkgs.mkShell {
           buildInputs = [ pkgs.nixpkgs-fmt pkgs.opentofu ];
         };
