@@ -54,5 +54,61 @@ nixos.kr/
 │   ├── index.md       # 메인 페이지
 │   ├── start/         # 입문 가이드
 │   └── topics/        # 주제별 문서
-└── dns/               # DNS 관리 (OpenTofu + Cloudflare)
+├── dns/               # DNS 관리 (OpenTofu + Cloudflare)
+└── .env.example       # 시크릿 템플릿 (Cloudflare 인증)
+```
+
+## DNS 관리
+
+DNS 레코드를 OpenTofu + Cloudflare로 선언적으로 관리합니다.
+
+### 설정
+
+1. Cloudflare 인증 정보 준비:
+   - **Zone ID**: Dashboard → nixos.kr → Overview → 우측 사이드바
+   - **API Token**: My Profile → API Tokens → Create Token → "Edit zone DNS"
+
+2. 시크릿 파일 생성:
+   ```bash
+   cp .env.example .env
+   # Cloudflare API 토큰과 Zone ID 입력
+   ```
+
+   > `.env`는 **시크릿**이며 gitignore 대상입니다. 절대 커밋하지 마세요.
+
+### 사용법
+
+```bash
+nix run .#dns -- plan   # 변경사항 미리보기
+nix run .#dns           # 변경사항 적용
+```
+
+CWD에 `.env`가 있으면 어디서든 실행 가능합니다. `dns/` 디렉토리에 `.tf` 파일과 상태 파일이 생성됩니다.
+
+### 레코드 추가
+
+`dns/main.tf`를 수정하고 `cloudflare_record` 리소스를 추가하세요:
+
+```hcl
+resource "cloudflare_record" "example" {
+  zone_id = var.zone_id
+  name    = "sub"
+  type    = "CNAME"
+  content = "example.com"
+  proxied = false
+}
+```
+
+### 기존 레코드 가져오기
+
+Cloudflare에 이미 존재하는 레코드는 적용 전에 import 하세요:
+
+```bash
+# 레코드 ID 찾기
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records?name=RECORD_NAME" \
+  | jq '.result[0].id'
+
+# state로 가져오기
+nix run .#dns -- import 'cloudflare_record.RESOURCE_NAME' ZONE_ID/RECORD_ID
 ```

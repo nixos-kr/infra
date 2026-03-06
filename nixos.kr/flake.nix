@@ -28,12 +28,19 @@
           type = "app";
           program = toString (pkgs.writeShellScript "dns" ''
             set -euo pipefail
-            if [ -f dns/.env ]; then
-              set -a; source dns/.env; set +a
+            # Load secrets from CWD
+            if [ -f .env ]; then
+              set -a; source .env; set +a
             else
-              echo "dns/.env not found. Create from dns/.env.example"
+              echo "No .env found in current directory"
+              echo "Create it with:"
+              echo "  TF_VAR_cloudflare_api_token=your-token"
+              echo "  TF_VAR_zone_id=your-zone-id"
               exit 1
             fi
+            # Copy .tf files from nix store to CWD/dns
+            mkdir -p dns
+            cp ${self}/dns/*.tf dns/
             ${pkgs.opentofu}/bin/tofu -chdir=dns init -upgrade -input=false > /dev/null 2>&1
             if [ $# -eq 0 ]; then
               ${pkgs.opentofu}/bin/tofu -chdir=dns apply
