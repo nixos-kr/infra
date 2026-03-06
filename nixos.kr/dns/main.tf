@@ -56,25 +56,15 @@ resource "cloudflare_record" "discord" {
   proxied = true
 }
 
-resource "cloudflare_ruleset" "discord_redirect" {
-  zone_id = var.zone_id
-  name    = "Discord redirect"
-  kind    = "zone"
-  phase   = "http_request_dynamic_redirect"
+resource "cloudflare_page_rule" "discord_redirect" {
+  zone_id  = var.zone_id
+  target   = "discord.nixos.kr/*"
+  priority = 1
 
-  rules {
-    action = "redirect"
-    action_parameters {
-      from_value {
-        target_url {
-          value = "https://discord.gg/6fybcHTnup"
-        }
-        status_code          = 302
-        preserve_query_string = false
-      }
+  actions {
+    forwarding_url {
+      url         = "https://discord.gg/6fybcHTnup"
+      status_code = 302
     }
-    expression  = "(http.host eq \"discord.nixos.kr\")"
-    description = "Redirect discord.nixos.kr to Discord invite"
-    enabled     = true
   }
 }
