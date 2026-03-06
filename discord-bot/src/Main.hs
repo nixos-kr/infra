@@ -4,9 +4,8 @@
 module Main where
 
 import Control.Monad (when)
-import Data.Aeson (encode, object, (.=))
+import Data.Aeson (encode)
 import qualified Data.ByteString.Lazy.Char8 as BL
-import Data.Char (isAlphaNum)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -14,7 +13,6 @@ import Options.Applicative
 import System.Exit (exitFailure)
 import System.IO (stderr)
 
-import Cluster
 import Discord
 import Gemini
 
@@ -27,7 +25,7 @@ data Opts = Opts
 
 optsParser :: ParserInfo Opts
 optsParser = info (helper <*> parser) $
-  fullDesc <> progDesc "Archive a Discord conversation as a FAQ entry"
+  fullDesc <> progDesc "Archive a Discord conversation as FAQ entries"
   where
     parser = Opts
       <$> strOption (long "channel-id" <> help "Discord channel ID")
@@ -39,7 +37,7 @@ main :: IO ()
 main = do
   opts <- execParser optsParser
 
-  -- 1. Fetch messages
+  -- 1. Fetch messages around target
   TIO.hPutStrLn stderr "Fetching messages from Discord..."
   messagesResult <- fetchMessagesAround
     (optDiscordToken opts) (optChannelId opts) (optMessageId opts)
@@ -49,52 +47,28 @@ main = do
 
   TIO.hPutStrLn stderr $ "Fetched " <> T.pack (show (length rawMsgs)) <> " messages"
 
-  -- 2. Convert and cluster
-  let clusterMsgs = map toClusterMsg rawMsgs
-      clustered = clusterMessages (optMessageId opts) clusterMsgs
+  -- 2. Follow reply chains and embedded message links
+  TIO.hPutStrLn stderr "Following message references..."
+  allMsgs <- fetchWithReferences (optDiscordToken opts) rawMsgs
 
-  when (null clustered) $ do
-    TIO.hPutStrLn stderr "No messages found in cluster"
+  when (null allMsgs) $ do
+    TIO.hPutStrLn stderr "No messages found"
     exitFailure
 
-  TIO.hPutStrLn stderr $ "Cluster size: " <> T.pack (show (length clustered))
+  TIO.hPutStrLn stderr $ "Total messages (with references): " <> T.pack (show (length allMsgs))
 
-  -- 3. Call Gemini
+  -- 3. Call Gemini for multi-topic FAQ generation
   TIO.hPutStrLn stderr "Calling Gemini API..."
-  digestResult <- digestConversation (optGeminiKey opts) clustered
-  faqContent <- case digestResult of
+  digestResult <- digestConversation (optGeminiKey opts) allMsgs
+  entries <- case digestResult of
     Left err  -> TIO.hPutStrLn stderr (T.pack err) >> exitFailure
-    Right md  -> pure md
+    Right es  -> pure es
 
-  -- 4. Generate slug from title
-  let slug = generateSlug faqContent
+  when (null entries) $ do
+    TIO.hPutStrLn stderr "No FAQ-worthy topics found in conversation"
+    exitFailure
 
-  TIO.hPutStrLn stderr $ "Generated slug: " <> slug
+  TIO.hPutStrLn stderr $ "Generated " <> T.pack (show (length entries)) <> " FAQ entries"
 
-  -- 5. Output JSON to stdout
-  BL.putStrLn $ encode $ object
-    [ "slug"    .= slug
-    , "content" .= faqContent
-    ]
-
-toClusterMsg :: DiscordMessage -> ClusterMessage
-toClusterMsg dm = ClusterMessage
-  { cmId         = dmId dm
-  , cmAuthorId   = duId (dmAuthor dm)
-  , cmAuthorName = duUsername (dmAuthor dm)
-  , cmTimestamp  = dmTimestamp dm
-  , cmContent    = dmContent dm
-  }
-
--- | Extract a URL-safe slug from the FAQ title (first # line).
-generateSlug :: Text -> Text
-generateSlug content =
-  let firstLine = case filter (T.isPrefixOf "# ") (T.lines content) of
-        (l:_) -> T.drop 2 l
-        []    -> "untitled"
-      cleaned = T.intercalate "-"
-        . filter (not . T.null)
-        . T.split (\c -> not (isAlphaNum c) && c /= '-')
-        . T.toLower
-        $ firstLine
-  in if T.null cleaned then "untitled" else cleaned
+  -- 4. Output JSON array to stdout
+  BL.putStrLn $ encode entries

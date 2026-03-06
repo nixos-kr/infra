@@ -6,12 +6,11 @@ Discord 대화를 FAQ 항목으로 변환하여 PR을 생성하는 봇입니다.
 
 ```
 discord-bot/
-├── src/                    # Haskell CLI (메시지 수집 → 클러스터링 → Gemini 요약)
+├── src/                    # Haskell CLI (메시지 수집 → 참조 추적 → Gemini 다중 주제 분석)
 │   ├── Main.hs
 │   ├── MessageLink.hs      # Discord 메시지 링크 파서
-│   ├── Discord.hs          # Discord REST API 호출
-│   ├── Cluster.hs          # 시간/참여자 기반 메시지 클러스터링
-│   └── Gemini.hs           # Gemini 2.5 Pro API 호출
+│   ├── Discord.hs          # Discord REST API 호출 + 답글/링크 참조 추적
+│   └── Gemini.hs           # Gemini 2.5 Pro 다중 주제 FAQ 생성
 ├── worker/                 # Rust Cloudflare Worker (Discord ↔ GitHub Actions 브릿지)
 │   ├── src/lib.rs
 │   ├── Cargo.toml
@@ -37,9 +36,9 @@ discord-bot/
   GitHub Actions
     1. Haskell CLI 빌드 (Nix)
     2. Discord API로 대화 가져오기 (메시지 주변 50개)
-    3. 시간 간격(<5분) + 참여자 연속성으로 클러스터링
-    4. Gemini 2.5 Pro로 FAQ 마크다운 생성
-    5. PR 생성 (ko/faq/<slug>.md)
+    3. 답글 체인 + 메시지 링크 참조 추적 (추가 컨텍스트)
+    4. Gemini 2.5 Pro가 주제를 분리하여 여러 FAQ 생성
+    5. PR 생성 (ko/faq/<slug1>.md, ko/faq/<slug2>.md, ...)
     6. Discord에 PR 링크 응답
 ```
 
@@ -116,10 +115,13 @@ nix develop -c cabal test
   --gemini-key <KEY>
 ```
 
-CLI는 JSON을 stdout으로 출력합니다:
+CLI는 JSON 배열을 stdout으로 출력합니다 (대화에 여러 주제가 있으면 각각 별도 항목):
 
 ```json
-{"slug": "unfree-패키지-설치", "content": "# unfree 패키지를 설치하고 싶어요\n..."}
+[
+  {"slug": "unfree-package-install", "content": "# unfree 패키지를 설치하고 싶어요\n..."},
+  {"slug": "flake-lock-update", "content": "# flake.lock을 업데이트하고 싶어요\n..."}
+]
 ```
 
 ## 사용법

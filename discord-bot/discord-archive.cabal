@@ -25,7 +25,7 @@ executable discord-archive
 test-suite discord-archive-test
   type:             exitcode-stdio-1.0
   main-is:          Spec.hs
-  other-modules:    MessageLink, Cluster, Discord, Gemini
+  other-modules:    MessageLink
   hs-source-dirs:   test, src
   default-language: Haskell2010
   default-extensions:

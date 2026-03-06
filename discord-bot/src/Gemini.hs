@@ -1,23 +1,41 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Gemini (digestConversation) where
+module Gemini (FaqEntry(..), digestConversation) where
 
 import Control.Exception (try, SomeException)
 import Data.Aeson
 import Data.Aeson.Types (parseMaybe)
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import Network.HTTP.Req
-import Cluster (ClusterMessage(..))
 
--- | Call Gemini 2.5 Pro to digest a conversation into a FAQ entry.
-digestConversation :: Text -> [ClusterMessage] -> IO (Either String Text)
+import Discord (DiscordMessage(..), DiscordUser(..))
+
+data FaqEntry = FaqEntry
+  { feSlug    :: Text
+  , feContent :: Text
+  } deriving (Eq, Show)
+
+instance FromJSON FaqEntry where
+  parseJSON = withObject "FaqEntry" $ \o ->
+    FaqEntry <$> o .: "slug" <*> o .: "content"
+
+instance ToJSON FaqEntry where
+  toJSON (FaqEntry s c) = object ["slug" .= s, "content" .= c]
+
+-- | Call Gemini 2.5 Pro to digest a conversation into FAQ entries.
+-- May return multiple entries if the conversation covers multiple topics.
+digestConversation :: Text -> [DiscordMessage] -> IO (Either String [FaqEntry])
 digestConversation apiKey messages = do
   let prompt = buildPrompt messages
       payload = object
         [ "contents" .= [ object [ "parts" .= [ object [ "text" .= prompt ] ] ] ]
+        , "generationConfig" .= object
+            [ "responseMimeType" .= ("application/json" :: Text) ]
         ]
   result <- try $ runReq defaultHttpConfig $ do
     r <- req POST
@@ -29,9 +47,14 @@ digestConversation apiKey messages = do
     pure (responseBody r :: Value)
   case result of
     Left (e :: SomeException) -> pure (Left (show e))
-    Right val -> case extractText val of
-      Just t  -> pure (Right t)
-      Nothing -> pure (Left "Failed to extract text from Gemini response")
+    Right val -> case extractEntries val of
+      Just entries -> pure (Right entries)
+      Nothing      -> pure (Left "Failed to extract FAQ entries from Gemini response")
+
+extractEntries :: Value -> Maybe [FaqEntry]
+extractEntries v = do
+  t <- extractText v
+  decode (BL.fromStrict (TE.encodeUtf8 t))
 
 extractText :: Value -> Maybe Text
 extractText v = parseMaybe parseResponse v
@@ -51,37 +74,33 @@ extractText v = parseMaybe parseResponse v
               ) parts
         ) candidates
 
-buildPrompt :: [ClusterMessage] -> Text
+buildPrompt :: [DiscordMessage] -> Text
 buildPrompt msgs = T.unlines
   [ "다음은 NixOS 한국 커뮤니티 Discord 서버의 대화입니다."
   , "이 대화를 분석하여 FAQ 항목으로 정리해주세요."
   , ""
-  , "출력 형식 (정확히 이 마크다운 형식을 따르세요):"
+  , "대화에 여러 주제가 포함되어 있을 수 있습니다."
+  , "각 독립된 주제를 별도의 FAQ 항목으로 분리해주세요."
+  , "관련 없는 잡담이나 인사는 무시하세요."
   , ""
-  , "# <제목 - 질문 형태로>"
+  , "JSON 배열로 반환하세요. 각 항목의 형식:"
   , ""
-  , "## 증상"
-  , "<사용자가 겪은 문제나 상황 설명>"
-  , ""
-  , "## 원인"
-  , "<문제의 원인 분석>"
-  , ""
-  , "## 해결 방법"
-  , "<단계별 해결책, 코드 블록 포함>"
-  , ""
-  , "## 관련 주제"
-  , "- [[topics/...]]"
+  , "{"
+  , "  \"slug\": \"url-safe-slug\","
+  , "  \"content\": \"# 제목\\n\\n## 증상\\n...\\n\\n## 원인\\n...\\n\\n## 해결 방법\\n...\\n\\n## 관련 주제\\n- [[topics/...]]\\n\""
+  , "}"
   , ""
   , "규칙:"
   , "- 한국어로 작성하세요"
   , "- 제목은 \"~하고 싶어요\", \"~가 안 돼요\" 같은 자연스러운 질문형으로"
   , "- 해결 방법에는 구체적인 코드와 명령어를 포함하세요"
+  , "- slug는 URL에 사용할 수 있는 영문/숫자/하이픈 형태로"
   , "- 관련 주제의 위키 링크는 flakes, home-manager, nixpkgs 등 기존 주제에서 선택"
-  , "- 마크다운 코드 펜스 없이 순수 마크다운만 출력하세요"
+  , "- 잡담이나 인사만 있는 경우 빈 배열 [] 반환"
   , ""
   , "=== 대화 시작 ==="
   , T.unlines (map formatMsg msgs)
   , "=== 대화 끝 ==="
   ]
   where
-    formatMsg m = T.concat ["[", cmAuthorName m, "] ", cmContent m]
+    formatMsg m = T.concat ["[", duUsername (dmAuthor m), "] ", dmContent m]

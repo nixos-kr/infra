@@ -30,31 +30,36 @@ jobs:
             --discord-token "$DISCORD_BOT_TOKEN" \
             --gemini-key "$GEMINI_API_KEY")
 
-          SLUG=$(echo "$OUTPUT" | jq -r '.slug')
-          CONTENT=$(echo "$OUTPUT" | jq -r '.content')
-
-          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-
           mkdir -p nixos.kr/ko/faq
-          echo "$CONTENT" > "nixos.kr/ko/faq/${SLUG}.md"
+          echo "$OUTPUT" | jq -c '.[]' | while read -r entry; do
+            SLUG=$(echo "$entry" | jq -r '.slug')
+            CONTENT=$(echo "$entry" | jq -r '.content')
+            echo "$CONTENT" > "nixos.kr/ko/faq/${SLUG}.md"
+          done
+
+          COUNT=$(echo "$OUTPUT" | jq 'length')
+          SLUGS=$(echo "$OUTPUT" | jq -r '[.[].slug] | join(",")')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "slugs=$SLUGS" >> "$GITHUB_OUTPUT"
 
       - name: Create PR
         id: create-pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLUG: ${{ steps.archive.outputs.slug }}
+          COUNT: ${{ steps.archive.outputs.count }}
+          SLUGS: ${{ steps.archive.outputs.slugs }}
         run: |
-          BRANCH="archive/${SLUG}"
+          BRANCH="archive/$(date +%Y%m%d-%H%M%S)"
           git checkout -b "$BRANCH"
-          git add "nixos.kr/ko/faq/${SLUG}.md"
+          git add nixos.kr/ko/faq/
           git config user.name "nixoskr-bot"
           git config user.email "bot@nixos.kr"
-          git commit -m "docs: add FAQ from Discord archive (${SLUG})"
+          git commit -m "docs: add ${COUNT} FAQ entries from Discord archive"
           git push origin "$BRANCH"
 
           PR_URL=$(gh pr create \
-            --title "FAQ: ${SLUG}" \
-            --body "이 FAQ 항목은 Discord 대화에서 자동 생성되었습니다." \
+            --title "FAQ: ${SLUGS}" \
+            --body "$(jq -n --arg count "$COUNT" '"\($count)개의 FAQ 항목이 Discord 대화에서 자동 생성되었습니다."')" \
             --head "$BRANCH" \
             --base master)
 
@@ -65,11 +70,13 @@ jobs:
           APPLICATION_ID: ${{ github.event.client_payload.application_id }}
           INTERACTION_TOKEN: ${{ github.event.client_payload.interaction_token }}
           PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+          COUNT: ${{ steps.archive.outputs.count }}
         run: |
           curl -s -X PATCH \
             "https://discord.com/api/v10/webhooks/${APPLICATION_ID}/${INTERACTION_TOKEN}/messages/@original" \
             -H "Content-Type: application/json" \
-            -d "$(jq -n --arg url "$PR_URL" '{"content": "✅ PR이 생성되었습니다: \($url)"}')"
+            -d "$(jq -n --arg url "$PR_URL" --arg count "$COUNT" \
+              '{"content": "✅ \($count)개의 FAQ PR이 생성되었습니다: \($url)"}')"
 
       - name: Post error to Discord on failure
         if: failure()
