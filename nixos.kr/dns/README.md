@@ -8,36 +8,21 @@ nixos.kr DNS records managed declaratively via OpenTofu + Cloudflare.
    - **Zone ID**: Dashboard → nixos.kr → Overview → right sidebar
    - **API Token**: My Profile → API Tokens → Create Token → "Edit zone DNS"
 
-2. Configure:
+2. Create secret file:
    ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   # fill in cloudflare_api_token and zone_id
+   cp .env.example .env
+   # fill in your Cloudflare API token and zone ID
    ```
 
-3. Initialize:
-   ```bash
-   tofu init
-   ```
+   > `.env` contains **secrets** and is gitignored. Never commit it.
 
 ## Usage
 
-```bash
-tofu plan    # preview changes
-tofu apply   # apply changes
-```
-
-## Importing existing records
-
-If a record already exists in Cloudflare, import it before `tofu apply`:
+From the `nixos.kr/` directory:
 
 ```bash
-# find the record ID
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records?name=RECORD_NAME" \
-  | jq '.result[0].id'
-
-# import into state
-tofu import 'cloudflare_record.RESOURCE_NAME' ZONE_ID/RECORD_ID
+nix run .#dns -- plan   # preview changes
+nix run .#dns           # apply changes
 ```
 
 ## Adding records
@@ -54,4 +39,18 @@ resource "cloudflare_record" "example" {
 }
 ```
 
-Then `tofu plan` and `tofu apply`.
+Then `nix run .#dns -- plan` and `nix run .#dns`.
+
+## Importing existing records
+
+If a record already exists in Cloudflare, import it before applying:
+
+```bash
+# find the record ID
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.cloudflare.com/client/v4/zones/ZONE_ID/dns_records?name=RECORD_NAME" \
+  | jq '.result[0].id'
+
+# import into state
+nix run .#dns -- import 'cloudflare_record.RESOURCE_NAME' ZONE_ID/RECORD_ID
+```
