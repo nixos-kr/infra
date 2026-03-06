@@ -9,19 +9,32 @@
     emanote.inputs.emanote-template.follows = "";
     nixpkgs.follows = "emanote/nixpkgs";
     flake-parts.follows = "emanote/flake-parts";
+    git-hooks.url = "github:cachix/git-hooks.nix";
+    git-hooks.inputs.nixpkgs.follows = "emanote/nixpkgs";
   };
 
   outputs = inputs@{ self, flake-parts, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
-      imports = [ inputs.emanote.flakeModule ];
-      perSystem = { self', pkgs, ... }: {
+      imports = [
+        inputs.emanote.flakeModule
+        inputs.git-hooks.flakeModule
+      ];
+      perSystem = { self', pkgs, config, ... }: {
         emanote.sites = {
           default = {
             layers = [
               { path = ./global; pathString = "./global"; }
               { path = ./ko; pathString = "./ko"; }
             ];
+          };
+        };
+        pre-commit.settings.hooks = {
+          gitleaks = {
+            enable = true;
+            name = "gitleaks";
+            entry = "${pkgs.gitleaks}/bin/gitleaks detect --no-banner --redact -v";
+            pass_filenames = false;
           };
         };
         apps.dns = {
@@ -50,7 +63,9 @@
           '');
         };
         devShells.default = pkgs.mkShell {
-          buildInputs = [ pkgs.nixpkgs-fmt pkgs.opentofu ];
+          shellHook = config.pre-commit.installationScript;
+          buildInputs = config.pre-commit.settings.enabledPackages
+            ++ [ pkgs.nixpkgs-fmt pkgs.opentofu ];
         };
       };
     };
